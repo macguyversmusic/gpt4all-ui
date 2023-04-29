@@ -9,7 +9,6 @@
 ######
 import gc
 import sys
-from queue import Queue
 from datetime import datetime
 from pyGpt4All.db import DiscussionsDB
 from pathlib import Path
@@ -26,9 +25,6 @@ class GPT4AllAPI():
         self.personality = personality
         self.config_file_path = config_file_path
         self.cancel_gen = False
-
-        # This is the queue used to stream text to the ui as the bot spits out its response
-        self.text_queue = Queue(0)
 
         # Keeping track of current discussion and message
         self.current_discussion = None
@@ -107,12 +103,13 @@ class GPT4AllAPI():
         )
         self.current_message_id = message_id
         if self.personality["welcome_message"]!="":
-            message_id = self.current_discussion.add_message(
-                self.personality["name"], self.personality["welcome_message"], 
-                DiscussionsDB.MSG_TYPE_NORMAL,
-                0,
-                self.current_message_id
-            )
+            if self.personality["welcome_message"]!="":
+                message_id = self.current_discussion.add_message(
+                    self.personality["name"], self.personality["welcome_message"], 
+                    DiscussionsDB.MSG_TYPE_NORMAL,
+                    0,
+                    self.current_message_id
+                )
         
             self.current_message_id = message_id
         return message_id
@@ -193,16 +190,16 @@ class GPT4AllAPI():
         return string
 
 
-
     def new_text_callback(self, text: str):
         if self.cancel_gen:
             return False
         print(text, end="")
         sys.stdout.flush()
+        
         if self.chatbot_bindings.inline:
             self.bot_says += text
             if not self.personality["user_message_prefix"].lower() in self.bot_says.lower():
-                self.text_queue.put(text)
+                self.socketio.emit('message', {'data': self.bot_says});
                 if self.cancel_gen:
                     print("Generation canceled")
                     return False
@@ -211,31 +208,36 @@ class GPT4AllAPI():
             else:
                 self.bot_says = self.remove_text_from_string(self.bot_says, self.personality["user_message_prefix"].lower())
                 print("The model is halucinating")
+                self.socketio.emit('final', {'data': self.bot_says})
                 return False
         else:
             self.full_text += text
             if self.is_bot_text_started:
                 self.bot_says += text
                 if not self.personality["user_message_prefix"].lower() in self.bot_says.lower():
-                    self.text_queue.put(text)
+                    self.socketio.emit('message', {'data': self.bot_says});
+                    #self.socketio.emit('message', {'data': text});
                     if self.cancel_gen:
                         print("Generation canceled")
+                        self.socketio.emit('final', {'data': self.bot_says})
                         return False
                     else:
                         return True
                 else:
                     self.bot_says = self.remove_text_from_string(self.bot_says, self.personality["user_message_prefix"].lower())
                     print("The model is halucinating")
+                    self.socketio.emit('final', {'data': self.bot_says})
                     self.cancel_gen=True
                     return False
                 
             #if self.current_message in self.full_text:
             if len(self.discussion_messages) < len(self.full_text):
                 self.is_bot_text_started = True
+            else:
+                self.socketio.emit('waiter', {'wait': (len(self.discussion_messages)-len(self.full_text))/len(self.discussion_messages)});
         
     def generate_message(self):
         self.generating=True
-        self.text_queue=Queue()
         gc.collect()
         total_n_predict = self.config['n_predict']
         print(f"Generating {total_n_predict} outputs... ")

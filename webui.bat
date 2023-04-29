@@ -35,7 +35,27 @@ echo HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 echo HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 echo HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH
 
+echo Checking internet connection
 
+ping google.com -n 1 >nul 2>&1
+if errorlevel 1 (
+    echo Internet connection not available
+    goto NO_INTERNET
+) else (
+	goto INTERNET_OK
+)
+:NO_INTERNET
+
+if exist GPT4All (
+    echo GPT4All folder found
+    cd GPT4All
+    set /p="Activating virtual environment ..." <nul
+    call env\Scripts\activate.bat
+)
+goto END
+
+:INTERNET_OK
+echo \e[32mInternet connection working fine
 
 
 REM Check if Git is installed
@@ -248,7 +268,8 @@ if not exist \models (
     md \models
 )
 
-if not exist ./models/llama_cpp/gpt4all-lora-quantized-ggml.bin (
+dir ".\models\llama_cpp\*.bin" /b 2>&1
+if errorlevel 1 (
     echo.
     choice /C YNB /M "The default model file (gpt4all-lora-quantized-ggml.bin) does not exist. Do you want to download it? Press B to download it with a browser (faster)."
     if errorlevel 3 goto DOWNLOAD_WITH_BROWSER
